@@ -1,0 +1,38 @@
+[
+  {
+    "ContainingType": "StackingGameBackend.Controllers.RewardController",
+    "Method": "ClaimReward",
+    "RelativePath": "api/Reward/claim",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "StackingGameBackend.Controllers.RewardController",
+    "Method": "ExpireReward",
+    "RelativePath": "api/Reward/expire",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "StackingGameBackend.Controllers.RewardController",
+    "Method": "GetReward",
+    "RelativePath": "api/Reward/reward",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "StackingGameBackend.Models.ScoreRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  }
+]
