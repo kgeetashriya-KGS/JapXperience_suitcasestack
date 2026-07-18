@@ -1,40 +1,66 @@
 # JAP Xperience — Reward-Based Stacking Mini Game
 
-A Flutter mini-game embedded in the payment success flow of the JAP Xperience travel app. Players stack suitcases against a 60-second timer to earn real travel rewards — coffee coupons, lounge access, or travel vouchers — with all reward logic decided entirely by a configurable ASP.NET Core backend.
+A Flutter mini-game integrated into the payment success flow of the JAP Xperience travel app. Instead of a plain payment confirmation screen, users are offered a fast-paced 60-second suitcase-stacking challenge that unlocks real travel rewards — turning a routine transaction into a moment of engagement.
 
 ## Overview
 
-After a successful payment, the user is offered a quick, playful mini-game instead of a plain confirmation screen. The final score is sent to the backend, which decides the reward and returns it to the app for display — the frontend never knows the thresholds or reward rules.
+After a successful payment, the user is dropped into a short, skill-based stacking game. Suitcases move horizontally across the screen and the player taps to drop each one onto the growing stack. Precision determines the score, the score determines the reward, and the reward is decided entirely by the backend — the Flutter app has no knowledge of thresholds or reward rules, only the final outcome it's told to display.
+
+## Gameplay Flow
 
 ```
 Payment Successful
         ↓
 Launch Mini Game
         ↓
-60 Second Gameplay (stack suitcases, score increases per success)
+60-Second Stacking Gameplay
         ↓
-Send Final Score to Backend
+Tap to Drop → Overlap Check → Score +10 (on success)
         ↓
-Backend Determines Reward (thresholds, name, message)
+Timer Ends OR Stack Fails
+        ↓
+Final Score Sent to Backend
+        ↓
+Backend Determines Reward
+        ↓
+Reward Displayed to User
         ↓
 claimReward() / expireReward()
         ↓
-Display Result Screen
-        ↓
-Navigate Back to Payment Success Screen
+Return to Payment Success Screen
+```
+
+## Architecture
+
+The project follows a clean separation between gameplay and business logic:
+
+- **Flutter (frontend)** owns everything the player sees and interacts with — gameplay, UI, animations, score calculation, and the 60-second timer.
+- **ASP.NET Core (backend)** owns everything about rewards — thresholds, reward names, messages, and lifecycle state.
+- **Flutter never knows reward rules.** It sends a single number, the final score, to the backend and renders whatever reward object comes back. This means reward tiers can change on the backend at any time without a new app release.
+
+```
+┌────────────────────┐        POST /reward         ┌─────────────────────┐
+│   Flutter Frontend  │ ───────────────────────────▶│  ASP.NET Core API   │
+│                      │                              │                      │
+│  Gameplay, UI,       │                              │  Reward thresholds,  │
+│  Animations, Score    │◀──────────────────────────│  reward logic,        │
+│  Calculation          │        Reward Object         │  claim/expire state  │
+└────────────────────┘                              └─────────────────────┘
 ```
 
 ## Features
 
-- 60-second countdown timer
-- Score-based dynamic difficulty (horizontal speed scales with score)
-- Tap-to-drop stacking with overlap-based collision detection
-- Natural landing bounce animation on success
-- Directional tumble animation on failure
-- Automatic camera scroll as the stack grows
-- Confetti celebration, scaled to reward tier
-- Score-based reward system, fully configurable on the backend
-- Claim / expire reward lifecycle
+- 60-second timed gameplay session
+- Horizontal suitcase movement with tap-to-drop interaction
+- Overlap-based collision detection to determine stacking success
+- Score increases on every successful stack
+- Difficulty scales dynamically — movement speed increases as score grows
+- Natural bounce animation on successful landings
+- Directional tumble animation on failed drops
+- Automatic camera scroll as the stack grows taller
+- Confetti celebration scaled to the reward tier earned
+- Score-based reward system, fully controlled by the backend
+- Reward claim and expire lifecycle handled via dedicated API endpoints
 
 ## Tech Stack
 
@@ -46,57 +72,65 @@ Navigate Back to Payment Success Screen
 - ASP.NET Core Web API
 - C#
 
-## Project Structure
+## Repository Structure
+
+The Flutter project lives at the repository root; the backend lives inside `/backend`.
 
 ```
-frontend/
-  lib/
-    screens/
-      game_screen.dart              # Core gameplay: timer, stacking, animations
-      payment_success_screen.dart   # Entry point after payment
-    services/
-      reward_api_service.dart       # HTTP client for the Reward API
-    models/
-      game_object.dart              # Suitcase/game object model, app colors
-    widgets/
-      progress_bar.dart
-
-backend/
-  Controllers/
-    RewardController.cs             # POST /api/Reward/reward, /claim, /expire
-  Services/
-    RewardService.cs                # Reward thresholds, allocation logic
-  Models/
-    Reward.cs                       # Reward response shape
-    ScoreRequest.cs                 # Score request shape
-  Program.cs
+.
+├── lib/
+│   ├── screens/
+│   │   ├── game_screen.dart              # Core gameplay: timer, stacking, animations
+│   │   └── payment_success_screen.dart   # Entry point after a successful payment
+│   ├── services/
+│   │   └── reward_api_service.dart       # HTTP client for the Reward API
+│   ├── models/
+│   │   └── game_object.dart              # Suitcase/game object model
+│   └── widgets/
+│       └── progress_bar.dart
+│
+└── backend/
+    ├── Controllers/
+    │   └── RewardController.cs           # API endpoints: reward, claim, expire
+    ├── Services/
+    │   └── RewardService.cs              # Reward thresholds and allocation logic
+    ├── Models/
+    │   ├── Reward.cs                     # Reward response shape
+    │   └── ScoreRequest.cs               # Score request shape
+    ├── Program.cs
+    └── StackingGameBackend.csproj
 ```
 
-> Adjust the folder names above to match your actual repo layout if it differs.
+## Reward System
 
-## Reward Thresholds
+Reward rules are defined and evaluated entirely inside `RewardService.cs`. The frontend has no concept of these thresholds — it only ever sees the final `Reward` object.
 
-Reward logic lives entirely in `RewardService.cs` on the backend and can be changed there without any frontend release.
-
-| Score Range | Reward               |
-|-------------|----------------------|
-| 0 – 90      | No Reward            |
-| 100 – 190   | Free Coffee Coupon   |
-| 200 – 290   | Airport Lounge Access|
-| 300+        | ₹500 Travel Voucher  |
+| Score Range | Reward                  |
+|-------------|--------------------------|
+| 0 – 90      | No Reward                |
+| 100 – 190   | Free Coffee Coupon       |
+| 200 – 290   | Airport Lounge Access    |
+| 300+        | ₹500 Travel Voucher      |
 
 ## API Reference
 
-Base URL (local/emulator): `http://10.0.2.2:5055/api/Reward`
+**Base URL**
+```
+http://10.0.2.2:5055/api/Reward
+```
 
-| Method | Endpoint          | Body                  | Description                                  |
-|--------|-------------------|------------------------|-----------------------------------------------|
-| POST   | `/reward`         | `{ "score": 250 }`     | Computes and returns the reward for a score  |
-| POST   | `/claim`          | —                       | Marks the current reward as claimed          |
-| POST   | `/expire`         | —                       | Marks the current reward as expired          |
+### `POST /reward`
 
-**Sample response**
+Calculates and returns the reward for a given score.
 
+**Request**
+```json
+{
+  "score": 250
+}
+```
+
+**Response**
 ```json
 {
   "success": true,
@@ -108,15 +142,17 @@ Base URL (local/emulator): `http://10.0.2.2:5055/api/Reward`
 }
 ```
 
-## Getting Started
+### `POST /claim`
 
-### Prerequisites
+Marks the current reward as claimed.
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install)
-- [.NET SDK](https://dotnet.microsoft.com/download) (8.0 or later recommended)
-- Android emulator / iOS simulator or physical device
+### `POST /expire`
 
-### Backend Setup
+Marks the current reward as expired.
+
+## Setup Instructions
+
+### Backend
 
 ```bash
 cd backend
@@ -124,28 +160,28 @@ dotnet restore
 dotnet run
 ```
 
-By default the API listens on `http://localhost:5055`. If you change the port, update `baseUrl` in `reward_api_service.dart` to match.
+The API runs on `http://localhost:5055` by default.
 
-### Frontend Setup
+### Frontend
+
+Run from the repository root:
 
 ```bash
-cd frontend
 flutter pub get
 flutter run
 ```
 
-> `reward_api_service.dart` uses `10.0.2.2` as the backend host, which points to your machine's `localhost` from the Android emulator. If you're running on a physical device or iOS simulator, update `baseUrl` to your machine's actual IP address or a deployed API URL.
+`reward_api_service.dart` targets `10.0.2.2`, which resolves to your machine's `localhost` from the Android emulator. If you're running on a physical device or a different emulator, update the base URL in that file to match your backend's reachable address.
 
-## Notes
+## Current Limitations
 
-- The frontend is intentionally kept unaware of reward thresholds, names, and messages — it only sends the final score and displays whatever the backend returns. This keeps reward rules configurable without app updates.
-- `RewardService` currently holds reward state in memory (no database), so it's best suited for a single active session at a time. See Future Scope below for persistence plans.
+- Reward state is held in memory on the backend, so it does not persist across server restarts and is not designed for concurrent multi-user sessions.
+- Reward thresholds are hardcoded as constants in `RewardService.cs` rather than externally configurable.
 
 ## Future Scope
 
-- Dynamic, admin-editable reward configuration
-- Database-backed reward history per user
-- Additional mini-games across other app moments
-- Analytics and engagement tracking
-- Seasonal reward campaigns
-
+- Externalized, admin-configurable reward thresholds
+- Persistent storage for reward history
+- Additional mini-games across other app touchpoints
+- Analytics on play rate, completion, and reward redemption
+- Seasonal or time-limited reward campaigns
