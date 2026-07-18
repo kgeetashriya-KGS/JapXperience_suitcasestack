@@ -149,6 +149,3 @@ flutter run
 - Analytics and engagement tracking
 - Seasonal reward campaigns
 
-## License
-
-Add your license here (e.g. MIT, proprietary/internal use only).
