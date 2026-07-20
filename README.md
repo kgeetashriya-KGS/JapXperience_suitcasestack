@@ -212,22 +212,6 @@ http://10.0.2.2:5055/api/Reward
 
 ---
 
-## Screenshots
-
-### Payment Success Screen
-(insert image)
-
-### Gameplay Screen
-(insert image)
-
-### Reward Screen
-(insert image)
-
-### Game Over Screen
-(insert image)
-
----
-
 ## How to Run the Project
 
 ### Backend
