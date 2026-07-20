@@ -65,9 +65,10 @@ class _GameScreenState extends State<GameScreen>
   bool _showInstruction = true;
 
   // ---------------- Countdown timer ----------------
-  static const int _gameDurationSeconds = 60;
+  static const int _gameDurationSeconds = 30;
   Timer? _countdownTimer;
   int _secondsLeft = _gameDurationSeconds;
+  bool _timerHasStarted = false; // ensures _startCountdown() fires only once, on first tap
 
   // ---------------- Horizontal ping-pong movement ----------------
   late final AnimationController _hController;
@@ -77,7 +78,7 @@ class _GameScreenState extends State<GameScreen>
   // Independent of _hController (the floating object). Drives only the
   // podium + already-stacked items. Roughly 30–40% of the floating
   // object's base speed (110 px/sec) so it stays fair.
-  static const double _platformPxPerSecond = 40;
+  static const double _platformPxPerSecond = 80;
   late final AnimationController _platformController;
   Animation<double> _platformOffsetAnimation =
       const AlwaysStoppedAnimation<double>(0);
@@ -133,7 +134,6 @@ _platformController = AnimationController(
   vsync: this,
   duration: const Duration(milliseconds: 1000), // placeholder; set for real in _startPlatformMovement
 );
-    _startCountdown();
   }
 
   @override
@@ -239,8 +239,13 @@ if (_pxPerSecond > 220) {
   }
 
   /// Player tapped: stop horizontal movement and start the vertical drop.
-  void _onTap() {
+ void _onTap() {
   if (status != GameStatus.playing || _phase != _Phase.moving) return;
+
+  if (!_timerHasStarted) {
+    _timerHasStarted = true;
+    _startCountdown();
+  }
 
   if (_showInstruction) {
     setState(() {
