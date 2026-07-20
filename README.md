@@ -1,256 +1,159 @@
-# JAP Xperience — Reward-Based Stacking Mini Game
+# JAP Xperience — Suitcase Stacking Game
 
-A Flutter mini-game built into the payment success flow of the JAP Xperience travel app. Instead of showing a plain "Payment Successful" screen, the app gives the user a short, skill-based stacking challenge that can unlock a real travel reward — turning a routine post-payment moment into something the user actually wants to engage with.
+A mini-game built as part of the JAP Xperience rewards platform. Players stack falling suitcases on a moving podium within a time limit to earn rewards, with all reward logic determined by the backend.
 
 ---
 
 ## Table of Contents
 
-- [Project Description](#project-description)
-- [Features](#features)
 - [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Gameplay Flow](#gameplay-flow)
-- [Reward Workflow](#reward-workflow)
-- [Stacking Logic](#stacking-logic)
+- [Game Flow](#game-flow)
+- [Features](#features)
+- [Backend Details](#backend-details)
 - [API Endpoints](#api-endpoints)
-- [Screenshots](#screenshots)
-- [How to Run the Project](#how-to-run-the-project)
-- [Future Improvements](#future-improvements)
-- [Conclusion](#conclusion)
-
----
-
-## Project Description
-
-**What it is**
-
-JAP Xperience's stacking game is a 60-second mini-game shown right after a payment is completed. The player stacks moving suitcases on top of each other, one at a time, by tapping at the right moment. How well they stack determines their score, and their score determines whether — and what — travel reward they unlock.
-
-**Why it was built**
-
-A payment confirmation screen is usually a dead end — the user sees "Success" and moves on. This project turns that moment into a small, rewarding interaction instead: the user isn't just told the payment worked, they get a chance to earn something extra from it. It also gave a clean opportunity to build a real, working example of a Flutter frontend talking to a separately-owned .NET backend, rather than keeping all logic on one side.
-
-**What the gameplay is**
-
-A suitcase moves left and right across the top of the screen. The player taps to drop it. If it lands with enough overlap on the stack (or the podium, for the first suitcase), it joins the stack and the score goes up. If it doesn't land with enough overlap, it tumbles off and the game ends. The podium itself also drifts slowly from side to side throughout the game, carrying the whole stack with it, which adds a second layer of timing to think about besides just the drop itself. The round ends either when the 60-second timer runs out or when a suitcase fails to land.
-
-**How the reward system works**
-
-At the end of the round, the app sends the final score to the backend. The backend — not the app — decides whether that score qualifies for a reward and which one. The Flutter app has no built-in knowledge of score thresholds or reward names; it simply displays whatever the backend responds with.
-
-**How the frontend and backend communicate**
-
-The Flutter app and the .NET backend communicate over a simple HTTP/JSON API. The frontend sends the score once the game ends, waits for a reward response, shows it to the user, and then makes one more call to tell the backend whether the reward was claimed or expired. All reward decision-making stays on the backend; the frontend is only ever a reporter and a display layer.
-
----
-
-## Features
-
-- **Dynamic stacking gameplay** — tap-to-drop suitcase stacking with overlap-based success/failure detection
-- **Moving podium mechanics** — the podium continuously drifts left and right within safe screen boundaries, and the entire stack moves with it
-- **Score-based rewards** — final score determines whether a reward is unlocked
-- **Backend-driven reward allocation** — all reward thresholds and reward names are decided by the .NET backend, never the app
-- **Increasing game difficulty** — suitcase movement speed gradually increases as the score climbs
-- **Timer-based gameplay** — every round is a fixed 60-second session
-- **Confetti animations** — celebration intensity scales with the reward tier earned
-- **Camera movement** — the view scrolls upward as the stack grows taller, keeping the active suitcase visible
-- **Reward claiming and expiry workflow** — reward state is explicitly claimed or expired after the round ends
-- **Flutter and .NET integration** — a working example of a mobile frontend and a Web API backend as two independently owned pieces
+- [Project Structure](#project-structure)
 
 ---
 
 ## Tech Stack
 
-**Frontend**
-- Flutter
-- Dart
-
-**Backend**
-- .NET Core Web API
-- C#
-
-**Others**
-- HTTP API integration (JSON over REST)
-- Git & GitHub
+| Layer     | Technology              |
+|-----------|--------------------------|
+| Frontend  | Flutter                 |
+| Backend   | .NET Core Web API       |
+| Integration | HTTP API (REST)       |
+| Version Control | Git & GitHub        |
 
 ---
 
-## Project Structure
+## Game Flow
 
-The Flutter project lives at the repository root; the backend lives inside `/backend`.
-
-```
-.
-├── lib/
-│   ├── screens/
-│   │   ├── game_screen.dart              # Core gameplay: timer, stacking, podium movement, animations
-│   │   └── payment_success_screen.dart   # Entry point shown right after a successful payment
-│   ├── services/
-│   │   └── reward_api_service.dart       # HTTP client that talks to the Reward API
-│   ├── models/
-│   │   └── game_object.dart              # Suitcase/game object data and shared game constants
-│   └── widgets/
-│       └── progress_bar.dart             # Reusable UI widget
-│
-└── backend/
-    ├── Controllers/
-    │   └── RewardController.cs           # API endpoints: reward, claim, expire
-    ├── Services/
-    │   └── RewardService.cs              # Reward thresholds and allocation logic
-    ├── Models/
-    │   ├── Reward.cs                     # Shape of the reward response sent to the app
-    │   └── ScoreRequest.cs               # Shape of the score request sent by the app
-    ├── Program.cs                        # API startup/configuration
-    └── StackingGameBackend.csproj
-```
-
-| File / Folder | Purpose |
-|---|---|
-| `game_screen.dart` | The entire mini-game: timer, suitcase movement, podium movement, collision/overlap checks, score updates, animations |
-| `payment_success_screen.dart` | Shown after payment; launches the game and displays the result once it's returned |
-| `reward_api_service.dart` | Sends the score to the backend and calls the claim/expire endpoints |
-| `game_object.dart` | Defines each suitcase (size, image asset) and shared visual constants |
-| `RewardController.cs` | Exposes the `/reward`, `/claim`, and `/expire` HTTP endpoints |
-| `RewardService.cs` | Contains the actual reward threshold rules and decides what reward, if any, a score earns |
-| `Reward.cs` / `ScoreRequest.cs` | Define the JSON shape of what's sent and received between the app and the API |
+1. Player is shown the **Payment Successful Screen**.
+2. Player taps **Play**.
+3. The **Game Screen** opens.
+4. The floating suitcase starts moving horizontally.
+5. The podium moves independently of the suitcase.
+6. The 30-second timer **does not start immediately** — it remains idle until the player interacts.
+7. The timer starts **only after the player's first tap**.
+8. The player stacks moving suitcases within the 30-second window.
+9. Score increases for each successful stack.
+10. Difficulty increases progressively as the game continues.
+11. The camera moves upward as the tower grows taller.
+12. The game ends normally when either:
+    - the timer reaches zero, or
+    - a stacking attempt fails (tumble).
+13. The player's final score is sent to the backend.
+14. The backend allocates a reward based on score thresholds.
+15. The reward is automatically claimed or expired depending on the outcome.
+16. The app navigates back to the Payment Success Screen after the result is displayed.
 
 ---
 
-## Gameplay Flow
+## Features
 
-```
-Payment Successful
-        ↓
-Start Game
-        ↓
-Stack Objects (tap to drop, podium and stack drift continuously)
-        ↓
-Score Calculation
-        ↓
-Game Ends (timer runs out OR a suitcase fails to land)
-        ↓
-Send Score to Backend
-        ↓
-Reward Allocation (decided entirely by the backend)
-        ↓
-Display Reward
-        ↓
-Claim / Expire Reward
-        ↓
-Navigate Back to Payment Success Screen
-```
+- Continuously moving floating suitcase
+- Independently moving podium
+- Timer starts only after the player's first tap (not on screen load)
+- 30-second gameplay timer
+- Progressive difficulty scaling as the score increases
+- Precise collision and overlap detection for stacking
+- Dynamic camera movement as the stack grows taller
+- Bounce animation on successful stacks
+- Tumble animation on failed stacks
+- Backend-driven reward allocation
+- Automatic reward claiming and expiry based on game outcome
+- Clean frontend-backend API integration
+- Modular, maintainable code structure
 
 ---
 
-## Reward Workflow
+## Backend Details
 
-Reward handling is split cleanly between the two sides of the project:
+The backend is a **.NET Core Web API** responsible for all reward-related decision-making. The Flutter frontend never determines reward eligibility or thresholds — it only sends the final score and renders whatever the backend returns.
 
-- **`getReward(score)`** — Called once the round ends. Sends the final score to the backend and receives back whether a reward was earned, and if so, its name and message.
-- **`claimReward()`** — Called after the result screen is shown, if the backend indicated a reward was won. Marks that reward as claimed on the backend.
-- **`expireReward()`** — Called instead of `claimReward()` if no reward was earned (or the backend indicates none applies), marking the reward attempt as expired.
+### RewardController
 
-**Important design point:** the frontend never decides reward thresholds. It doesn't know what score maps to what reward — that logic lives entirely inside `RewardService.cs` on the backend. Flutter's only job is to send the score, and then faithfully display and act on whatever response it gets back. This means reward rules can be changed on the backend at any time without touching or re-releasing the app.
+Exposes the HTTP endpoints consumed by the Flutter app. Responsible for receiving the player's score, forwarding it to `RewardService`, and returning the reward claim/expire results to the client.
 
----
+### RewardService
 
-## Stacking Logic
+Contains the core business logic for reward allocation. Evaluates the player's score against defined thresholds, decides which reward (if any) is granted, and manages the claim/expire lifecycle of that reward.
 
-At a high level, without exposing internal implementation details:
+### Reward Model
 
-- **Overlap calculation** — when a suitcase is dropped, its horizontal position is compared against the item below it (or the podium, for the first drop). If enough of the suitcase overlaps the surface beneath it, the stack succeeds; otherwise the suitcase tumbles off and the round ends.
-- **Score updates** — every successful stack adds to the score. The round is scored purely on how many suitcases are stacked correctly.
-- **Increasing difficulty** — as the score rises, the suitcases move faster across the screen, making later drops require sharper timing.
-- **Podium movement** — the podium drifts continuously between two boundaries at a much slower speed than the suitcases, and stays within safe padding from the screen edges so nothing overhanging the stack goes off-screen.
-- **Camera movement** — as the stack grows tall enough to approach the top of the screen, the camera scrolls upward to keep the active suitcase and the top of the stack visible at all times.
+Represents a reward entity, including details such as the reward name and its current status (e.g. pending, claimed, expired).
+
+### ScoreRequest Model
+
+Represents the payload sent from Flutter to the backend, containing the player's final score for a completed game session.
+
+### Design Principle
+
+- Reward logic is handled **entirely** by the backend.
+- Flutter **never** decides reward thresholds or reward names.
+- Flutter only sends the player's score and displays whatever the backend responds with.
+- This separation keeps reward rules centralized, secure, and independently updatable without requiring frontend changes.
 
 ---
 
 ## API Endpoints
 
-**Base URL**
-```
-http://10.0.2.2:5055/api/Reward
-```
+### `POST /api/Reward/reward`
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/Reward/reward` | Accepts the final score and returns whether a reward was earned, along with its name and message |
-| POST | `/api/Reward/claim` | Marks the most recently issued reward as claimed |
-| POST | `/api/Reward/expire` | Marks the most recently issued reward as expired |
+Sends the player's final score to the backend and receives reward information in return.
 
-### POST `/reward`
+**Request Body**
+    {
+      "score": 120
+    }
 
-**Request**
-```json
-{
-  "score": 250
-}
-```
+**Response Body**
+    {
+      "success": true,
+      "rewardName": "Airport Lounge Access"
+    }
 
-**Response**
-```json
-{
-  "success": true,
-  "score": 250,
-  "rewardName": "Airport Lounge Access",
-  "message": "Congratulations! You've unlocked Airport Lounge Access.",
-  "claimed": false,
-  "expired": false
-}
-```
+### `POST /api/Reward/claim`
 
-**Current reward thresholds** (defined in `RewardService.cs`):
+Marks the previously issued reward as claimed.
 
-| Score Range | Reward |
-|---|---|
-| 0 – 90 | No Reward |
-| 100 – 190 | Free Coffee Coupon |
-| 200 – 290 | Airport Lounge Access |
-| 300+ | ₹500 Travel Voucher |
+### `POST /api/Reward/expire`
+
+Marks the previously issued reward as expired.
 
 ---
 
-## How to Run the Project
+## Project Structure
 
-### Backend
+### Flutter Frontend
 
-```bash
-cd backend
-dotnet restore
-dotnet run
-```
+    lib/
+    ├── main.dart
+    ├── models/
+    │   └── game_object.dart
+    ├── screens/
+    │   ├── payment_success_screen.dart
+    │   └── game_screen.dart
+    ├── services/
+    │   └── reward_api_service.dart
+    └── theme/
+        └── app_colors.dart
 
-The API starts on `http://localhost:5055` by default.
+### .NET Backend
 
-### Frontend
-
-From the repository root:
-
-```bash
-flutter pub get
-flutter run
-```
-
-### How they connect locally
-
-`reward_api_service.dart` points to `http://10.0.2.2:5055`. This address is a special alias that the Android emulator uses to reach `localhost` on your development machine — so as long as the backend is running locally on port 5055, the emulator can reach it without any extra configuration.
-
-If you're testing on a physical device or a different emulator, `10.0.2.2` won't resolve correctly — update the base URL in `reward_api_service.dart` to your machine's actual local network address (e.g. `http://192.168.x.x:5055`) instead.
-
----
-
-## Future Improvements
-
-- Externally configurable reward thresholds, instead of hardcoded constants in `RewardService.cs`
-- Deploying the backend to a hosted environment instead of running it locally
-- Additional reward types beyond the current fixed set
-- A leaderboard to track and compare high scores
-- Multiplayer or challenge-based game modes
+    JAPXperience.Api/
+    ├── Controllers/
+    │   └── RewardController.cs
+    ├── Services/
+    │   └── RewardService.cs
+    ├── Models/
+    │   ├── Reward.cs
+    │   └── ScoreRequest.cs
+    ├── Program.cs
+    └── appsettings.json
 
 ---
 
-## Conclusion
+## Summary
 
-This project demonstrates a complete, working slice of a real product feature: a mobile game built in Flutter, backed by a separately maintained .NET Core API, communicating over a simple and predictable HTTP contract. The split of responsibility is intentional — the app owns the experience, the backend owns the business rules — which keeps each side simple to reason about and change independently. It's a small project in scope, but it reflects a structure that would hold up in a larger, production-style application.
+The Suitcase Stacking Game combines a Flutter-based interactive gameplay experience with a .NET Core backend that fully owns reward logic. The frontend focuses purely on gameplay, animation, and presentation, while all scoring thresholds and reward decisions remain centralized on the server — keeping the system secure, maintainable, and easy to extend.
