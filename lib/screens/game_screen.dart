@@ -26,7 +26,7 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen>
     with TickerProviderStateMixin {
   // ---------------- Tunable layout / gameplay constants ----------------
- double _pxPerSecond = 110; // constant horizontal speed
+  double _pxPerSecond = 110; // constant horizontal speed
   static const double _movingTop = 24; // Y position of the moving object
   static const double _platformWidth = 180;
   static const double _platformHeight = 22;
@@ -37,6 +37,7 @@ class _GameScreenState extends State<GameScreen>
   /// active item's height, or the newest stacked item can render above
   /// (and visually overlap) the moving/falling object.
   static const double _cameraTopMargin = 190;
+  static const double _platformEdgePadding = 40;
 
   // ---------------- Game state ----------------
   final List<StackedItem> stackedItems = [];
@@ -63,7 +64,7 @@ class _GameScreenState extends State<GameScreen>
 
   bool _showInstruction = true;
 
- // ---------------- Countdown timer ----------------
+  // ---------------- Countdown timer ----------------
   static const int _gameDurationSeconds = 60;
   Timer? _countdownTimer;
   int _secondsLeft = _gameDurationSeconds;
@@ -71,6 +72,16 @@ class _GameScreenState extends State<GameScreen>
   // ---------------- Horizontal ping-pong movement ----------------
   late final AnimationController _hController;
   Animation<double> _moveAnimation = const AlwaysStoppedAnimation<double>(0);
+
+  // ---------------- Podium movement ----------------
+  // Independent of _hController (the floating object). Drives only the
+  // podium + already-stacked items. Roughly 30–40% of the floating
+  // object's base speed (110 px/sec) so it stays fair.
+  static const double _platformPxPerSecond = 40;
+  late final AnimationController _platformController;
+  Animation<double> _platformOffsetAnimation =
+      const AlwaysStoppedAnimation<double>(0);
+  bool _platformStarted = false;
 
   // ---------------- Vertical drop (success path) ----------------
   late final AnimationController _fallController;
@@ -82,11 +93,11 @@ class _GameScreenState extends State<GameScreen>
   late final AnimationController _failController;
   late final ConfettiController _confettiController;
 
-  // ---------------- CHANGE #1: landing bounce (success path) ----------------
+  // ---------------- Landing bounce (success path) ----------------
   late final AnimationController _landBounceController;
   int? _bounceItemIndex; // index into stackedItems currently mid-bounce
 
-  // ---------------- CHANGE #2: tumble direction (fail path) ----------------
+  // ---------------- Tumble direction (fail path) ----------------
   double _tumbleDirection = 1.0; // 1.0 = falls right, -1.0 = falls left
 
   @override
@@ -118,6 +129,10 @@ class _GameScreenState extends State<GameScreen>
     _confettiController = ConfettiController(
   duration: const Duration(seconds: 3),
 );
+_platformController = AnimationController(
+  vsync: this,
+  duration: const Duration(milliseconds: 1000), // placeholder; set for real in _startPlatformMovement
+);
     _startCountdown();
   }
 
@@ -129,10 +144,10 @@ class _GameScreenState extends State<GameScreen>
     _failController.dispose();
     _landBounceController.dispose();
     _confettiController.dispose();
+    _platformController.dispose();
     super.dispose();
   }
 
-  // ==== NEW: countdown timer helpers ====
   /// Starts (or restarts) the 60-second countdown. Purely a UI/state timer —
   /// does not touch _pxPerSecond, collision thresholds, or camera math.
   void _startCountdown() {
@@ -171,6 +186,36 @@ class _GameScreenState extends State<GameScreen>
   double get _platformTop =>
       _gameHeight - _platformBottomMargin - _platformHeight;
 
+  /// How far the podium's center can drift each direction while staying
+/// fully on-screen — mirrors how _platformLeft is centered.
+double get _platformMaxOffset => math.max(
+      0.0,
+      (_gameWidth - _platformWidth) / 2 - _platformEdgePadding,
+    );
+
+/// Starts the podium's continuous left<->right movement. Called once,
+/// after layout is known. Uses repeat(reverse: true) so it never stops
+/// for the rest of gameplay — satisfies "podium should always move."
+/// Completely separate from _hController / _startMoving(), so the
+/// floating object's speed, duration, and difficulty scaling are
+/// untouched.
+void _startPlatformMovement() {
+  final maxOffset = _platformMaxOffset;
+  if (maxOffset <= 0) return;
+
+  final distance = maxOffset * 2;
+  final durationMs =
+      ((distance / _platformPxPerSecond) * 1000).clamp(500, 20000).round();
+
+  _platformController.duration = Duration(milliseconds: durationMs);
+  _platformOffsetAnimation = Tween<double>(begin: -maxOffset, end: maxOffset)
+      .animate(_platformController);
+
+  _platformController
+    ..value = 0.5 // 0.5 == offset 0, so the podium starts exactly where it always used to sit
+    ..repeat(reverse: true);
+}
+  
   /// Starts the left<->right movement for the object at [currentIndex].
   void _startMoving() {
     final data = kGameObjects[currentIndex];
@@ -231,23 +276,34 @@ if (_pxPerSecond > 220) {
     final left = _currentLeft!;
     final right = left + data.width;
 
-    final double prevLeft =
-        stackedItems.isEmpty ? _platformLeft : stackedItems.last.left;
-    final double prevRight = stackedItems.isEmpty
-        ? _platformLeft + _platformWidth
-        : stackedItems.last.right;
+    // Read the podium's current offset ONCE so the comparison below and
+// the position we store for this item (further down) use the exact
+// same moving-stack snapshot.
+final double platformOffsetX = _platformOffsetAnimation.value;
 
-    final overlap = math.min(right, prevRight) - math.max(left, prevLeft);
-    final double supportWidth = prevRight - prevLeft;
-    final double referenceWidth = math.min(data.width, supportWidth);
-    final success = overlap >= referenceWidth * _overlapThreshold;
+final double prevLeft =
+    stackedItems.isEmpty ? _platformLeft : stackedItems.last.left;
+final double prevRight = stackedItems.isEmpty
+    ? _platformLeft + _platformWidth
+    : stackedItems.last.right;
 
+// Same base positions as before — just shifted to where the podium
+// (and everything stacked on it) actually is right now.
+final double currentPrevLeft = prevLeft + platformOffsetX;
+final double currentPrevRight = prevRight + platformOffsetX;
+
+// ---- Everything below this line is the ORIGINAL, unmodified formula ----
+final overlap =
+    math.min(right, currentPrevRight) - math.max(left, currentPrevLeft);
+final double supportWidth = currentPrevRight - currentPrevLeft; // identical value to prevRight-prevLeft — offset cancels out
+final double referenceWidth = math.min(data.width, supportWidth);
+final success = overlap >= referenceWidth * _overlapThreshold;
     if (success) {
       setState(() {
         stackedItems.add(
           StackedItem(
             data: data,
-            left: left,
+            left: left - platformOffsetX,
             top: _landingTargetTop! + 2,
           ),
         );
@@ -285,8 +341,8 @@ if (_pxPerSecond > 220) {
       // Determines which side gave way, using the overlap values already
       // computed above, so the tumble animation falls toward the
       // unsupported side.
-      final double leftOverhang = prevLeft - left;
-      final double rightOverhang = right - prevRight;
+      final double leftOverhang = currentPrevLeft - left;
+      final double rightOverhang = right - currentPrevRight;
       _tumbleDirection = rightOverhang >= leftOverhang ? 1.0 : -1.0;
 
       setState(() => _phase = _Phase.tumbling);
@@ -739,6 +795,11 @@ if (status == GameStatus.success) {
           WidgetsBinding.instance.addPostFrameCallback((_) => _startMoving());
         }
 
+        if (!_platformStarted) {
+  _platformStarted = true;
+  WidgetsBinding.instance.addPostFrameCallback((_) => _startPlatformMovement());
+}
+
        return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _onTap,
@@ -746,77 +807,78 @@ if (status == GameStatus.success) {
             tween: Tween<double>(end: _cameraOffset),
             duration: const Duration(milliseconds: 450),
             curve: Curves.easeOutCubic,
-            builder: (context, cameraOffset, _) => Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Platform — same Positioned left/top/width/height as before
-              // (collision math depends on these), only the visual
-              // `decoration` below was restyled.
-              Positioned(
-                left: _platformLeft,
-                top: _platformTop + cameraOffset,
-                child: Container(
-                  width: _platformWidth,
-                  height: _platformHeight,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                     colors: [
-  AppColors.primaryTeal,
-  AppColors.primaryTealDark,
-],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                   border: Border.all(
-  color: Colors.white.withValues(alpha: 0.25),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryTealDark.withValues(alpha: 0.45),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      ),
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                   ],
-                  ),
-                ),
-              ),
+            builder: (context, cameraOffset, _) => AnimatedBuilder(
+              animation: _platformController,
+              builder: (context, __) {
+                final double platformOffsetX = _platformOffsetAnimation.value;
 
-              // Already-landed items. Only the most recently landed one
-              // (while _bounceItemIndex is set) plays the landing-bounce
-              // animation; everything else renders as a plain image.
-              for (int i = 0; i < stackedItems.length; i++)
-                Positioned(
-                  left: stackedItems[i].left,
-                  top: stackedItems[i].top + cameraOffset,
-                  child: i == _bounceItemIndex
-                      ? AnimatedBuilder(
-                          animation: _landBounceController,
-                          builder: (context, child) {
-                            final t = _landBounceController.value;
-                            return Transform.translate(
-                              offset: Offset(0, _landingBounceDy(t)),
-                              child: Transform.scale(
-                                scaleY: _landingBounceScaleY(t),
-                                alignment: Alignment.bottomCenter,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: _objectImage(stackedItems[i].data),
-                        )
-                      : _objectImage(stackedItems[i].data),
-                ),
-              // The single active object — unchanged.
-              _buildActiveObject(cameraOffset),
-            ],
-          ),
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: _platformLeft + platformOffsetX,
+                      top: _platformTop + cameraOffset,
+                      child: Container(
+                        width: _platformWidth,
+                        height: _platformHeight,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.primaryTeal,
+                              AppColors.primaryTealDark,
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            width: 1.2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryTealDark.withValues(alpha: 0.45),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    for (int i = 0; i < stackedItems.length; i++)
+                      Positioned(
+                        left: stackedItems[i].left + platformOffsetX,
+                        top: stackedItems[i].top + cameraOffset,
+                        child: i == _bounceItemIndex
+                            ? AnimatedBuilder(
+                                animation: _landBounceController,
+                                builder: (context, child) {
+                                  final t = _landBounceController.value;
+                                  return Transform.translate(
+                                    offset: Offset(0, _landingBounceDy(t)),
+                                    child: Transform.scale(
+                                      scaleY: _landingBounceScaleY(t),
+                                      alignment: Alignment.bottomCenter,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: _objectImage(stackedItems[i].data),
+                              )
+                            : _objectImage(stackedItems[i].data),
+                      ),
+
+                    _buildActiveObject(cameraOffset),
+                  ],
+                );
+              },
+            ),
           ),
         );
       },
